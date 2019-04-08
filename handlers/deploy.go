@@ -253,6 +253,14 @@ func makeDeploymentSpec(request requests.CreateFunctionRequest, existingSecrets 
 							},
 						},
 					},
+					Tolerations: []corev1.Toleration{
+						corev1.Toleration{
+							Effect:   corev1.TaintEffectNoSchedule,
+							Key:      "dedicated",
+							Operator: corev1.TolerationOpEqual,
+							Value:    "preemptible-faas-pool",
+						},
+					},
 					RestartPolicy: corev1.RestartPolicyAlways,
 					DNSPolicy:     corev1.DNSClusterFirst,
 				},

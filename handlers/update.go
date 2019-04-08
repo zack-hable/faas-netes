@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/openfaas/faas/gateway/requests"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -104,6 +105,15 @@ func updateDeploymentSpec(
 		existingSecrets, err := getSecrets(clientset, functionNamespace, request.Secrets)
 		if err != nil {
 			return err, http.StatusBadRequest
+		}
+
+		deployment.Spec.Template.Spec.Tolerations = []corev1.Toleration{
+			corev1.Toleration{
+				Effect:   corev1.TaintEffectNoSchedule,
+				Key:      "dedicated",
+				Operator: corev1.TolerationOpEqual,
+				Value:    "preemptible-faas-pool",
+			},
 		}
 
 		err = UpdateSecrets(request, deployment, existingSecrets)
