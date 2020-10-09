@@ -1,9 +1,9 @@
 echo Installing with helm 👑
 
-helm repo add openfaas https://openfaas.github.io/faas-netes/
+helm repo add openfaas https://zack-hable.github.io/faas-netes/
 
 kubectl apply -f \
-   https://raw.githubusercontent.com/openfaas/faas-netes/master/namespaces.yml
+   https://raw.githubusercontent.com/zack-hable/faas-netes/master/namespaces.yml
 
 # generate a random password
 PASSWORD=$(head -c 12 /dev/urandom | shasum| cut -d' ' -f1)

@@ -19,6 +19,7 @@ import (
 
 	types "github.com/openfaas/faas-provider/types"
 	appsv1 "k8s.io/api/apps/v1"
+	schedulingv1 "k8s.io/api/scheduling/v1"
 	apiv1 "k8s.io/api/core/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -28,6 +29,7 @@ import (
 
 // initialReplicasCount how many replicas to start of creating for a function
 const initialReplicasCount = 1
+const initialPodPriority = 5
 
 // MakeDeployHandler creates a handler to create new functions in the cluster
 func MakeDeployHandler(functionNamespace string, factory k8s.FunctionFactory) http.HandlerFunc {
@@ -125,6 +127,7 @@ func makeDeploymentSpec(request types.FunctionDeployment, existingSecrets map[st
 	envVars := buildEnvVars(&request)
 
 	initialReplicas := int32p(initialReplicasCount)
+	podPriority := int32p(initialPodPriority)
 	labels := map[string]string{
 		"faas_function": request.Service,
 	}
@@ -132,6 +135,9 @@ func makeDeploymentSpec(request types.FunctionDeployment, existingSecrets map[st
 	if request.Labels != nil {
 		if min := getMinReplicaCount(*request.Labels); min != nil {
 			initialReplicas = min
+		}
+		if priority := getPodPriority(*request.Labels); priority != nil {
+			podPriority = priority
 		}
 		for k, v := range *request.Labels {
 			labels[k] = v
@@ -174,6 +180,26 @@ func makeDeploymentSpec(request types.FunctionDeployment, existingSecrets map[st
 
 	enableServiceLinks := false
 
+	deployPriorityClass := factory.Client.SchedulingV1().PriorityClasses()
+
+	preemptionPolicy := apiv1.PreemptLowerPriority
+	priorityClassSpec := &schedulingv1.PriorityClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: request.Service,
+		},
+		Value: *podPriority,
+		GlobalDefault: false,
+		PreemptionPolicy: &preemptionPolicy,
+	}
+
+	podPriorityClass, err := deployPriorityClass.Create(context.TODO(), priorityClassSpec, metav1.CreateOptions{})
+	if err != nil {
+		wrappedErr := fmt.Errorf("unable create PriorityClass: %s", err.Error())
+		log.Println(wrappedErr)
+		//http.Error(w, wrappedErr.Error(), http.StatusInternalServerError)
+		return nil, err
+	}
+
 	deploymentSpec := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        request.Service,
@@ -210,6 +236,7 @@ func makeDeploymentSpec(request types.FunctionDeployment, existingSecrets map[st
 					Annotations: annotations,
 				},
 				Spec: apiv1.PodSpec{
+					PriorityClassName: podPriorityClass.ObjectMeta.Name,
 					NodeSelector: nodeSelector,
 					Containers: []apiv1.Container{
 						{
@@ -392,6 +419,19 @@ func getMinReplicaCount(labels map[string]string) *int32 {
 		minReplicas, err := strconv.Atoi(value)
 		if err == nil && minReplicas > 0 {
 			return int32p(int32(minReplicas))
+		}
+
+		log.Println(err)
+	}
+
+	return nil
+}
+
+func getPodPriority(labels map[string]string) *int32 {
+	if value, exists := labels["cs2510.priority"]; exists {
+		podPriority, err := strconv.Atoi(value)
+		if err == nil && podPriority > 0 {
+			return int32p(int32(podPriority))
 		}
 
 		log.Println(err)
