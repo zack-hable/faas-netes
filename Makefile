@@ -15,8 +15,14 @@ build-armhf:
 build:
 	docker build --build-arg http_proxy="${http_proxy}" --build-arg https_proxy="${https_proxy}" -t openfaas/faas-netes:$(TAG) .
 
+my_build:
+	docker build -f MyDockerfile --build-arg http_proxy="${http_proxy}" --build-arg https_proxy="${https_proxy}" -t zhable/faas-netes:$(TAG) .
+
 push:
 	docker push openfaas/faas-netes:$(TAG)
+
+my_push:
+	docker push zhable/faas-netes:$(TAG)
 
 namespaces:
 	kubectl apply -f namespaces.yml

@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"math"
 
 	"github.com/openfaas/faas-netes/pkg/k8s"
 
@@ -30,6 +31,13 @@ import (
 // initialReplicasCount how many replicas to start of creating for a function
 const initialReplicasCount = 1
 const initialPodPriority = 5
+const initialPodTaskType = CPU_BOUND
+
+type TaskType int32
+const (
+	CPU_BOUND TaskType = iota
+	IO_BOUND
+)
 
 // MakeDeployHandler creates a handler to create new functions in the cluster
 func MakeDeployHandler(functionNamespace string, factory k8s.FunctionFactory) http.HandlerFunc {
@@ -128,6 +136,9 @@ func makeDeploymentSpec(request types.FunctionDeployment, existingSecrets map[st
 
 	initialReplicas := int32p(initialReplicasCount)
 	podPriority := int32p(initialPodPriority)
+	// assume task type is cpu bound
+	podTaskType := new(TaskType)
+	*podTaskType = initialPodTaskType
 	labels := map[string]string{
 		"faas_function": request.Service,
 	}
@@ -138,6 +149,9 @@ func makeDeploymentSpec(request types.FunctionDeployment, existingSecrets map[st
 		}
 		if priority := getPodPriority(*request.Labels); priority != nil {
 			podPriority = priority
+		}
+		if taskType := getPodTaskType(*request.Labels); taskType != nil {
+			*podTaskType = *taskType
 		}
 		for k, v := range *request.Labels {
 			labels[k] = v
@@ -180,6 +194,80 @@ func makeDeploymentSpec(request types.FunctionDeployment, existingSecrets map[st
 
 	enableServiceLinks := false
 
+	// construct image of nodes and assigned pods to them to determine next assignment
+	scheduleTable := make(map[string]map[TaskType][]apiv1.Pod)
+
+	nodes, err := factory.Client.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		log.Println("Error while getting nodes")
+		log.Println(err)
+	} else {
+		for _, node := range nodes.Items {
+			nodeLabel, exists := node.Labels["node"]
+			if !exists {
+				log.Println("No node label associated with node...")
+			} else {
+				// create subtables for different types of functions
+				scheduleTable[nodeLabel] = make(map[TaskType][]apiv1.Pod)
+				scheduleTable[nodeLabel][CPU_BOUND] = make([]apiv1.Pod, 0)
+				scheduleTable[nodeLabel][IO_BOUND] = make([]apiv1.Pod, 0)
+			}
+		}
+	}
+
+	// get current pods and their assignments
+	pods, err := factory.Client.CoreV1().Pods("openfaas-fn").List(context.TODO(), metav1.ListOptions{})
+	//log.Println("Pod Task Type", *podTaskType)
+	//log.Println(pods.Items)
+	if err != nil {
+		log.Println("Error while getting pods")
+		log.Println(err)
+	} else {
+		for _, pod := range pods.Items {
+			//log.Println("Pod Spec", pod.Spec)
+			//log.Println("Node Selector", pod.Spec.NodeSelector)
+			nodeLabel, nodeExists := pod.Spec.NodeSelector["node"]
+			taskTypeLabel, taskTypeExists := pod.Labels["task_type"]
+			if !nodeExists {
+				log.Println("No node label associated with pod...")
+			} else if !taskTypeExists {
+				log.Println("No task type label associated with pod...")
+			} else {
+				taskTypeInt, err := strconv.Atoi(taskTypeLabel)
+				if err != nil {
+					log.Println("Error converting task type label to integer")
+					log.Println(err)
+				} else {
+					taskTypeEnum := TaskType(taskTypeInt)
+					scheduleTable[nodeLabel][taskTypeEnum] = append(scheduleTable[nodeLabel][taskTypeEnum], pod)
+				}
+			}
+		}
+	}
+
+	// perform simple min loaded assignment of given type
+	// assume server 1 if we find nothing
+	minLoadedServer := "1"
+	minLoaderServerCount := math.MaxInt64
+	// iterate over table to display some basic stats
+	for nodeName, taskTypes := range scheduleTable {
+		for taskType, nodeTaskPods := range taskTypes {
+			log.Println(nodeName, " - ", taskType, " - ", len(nodeTaskPods))
+			// check if matches our type and is lowest
+			if len(nodeTaskPods) < minLoaderServerCount && taskType == *podTaskType {
+				minLoaderServerCount = len(nodeTaskPods)
+				minLoadedServer = nodeName
+			}
+		}
+	}
+
+	nodeSelector["node"] = minLoadedServer
+	log.Println("Service assigned to node ", minLoadedServer)
+
+	// save task type
+	labels["task_type"] = strconv.Itoa(int(*podTaskType))
+
+	// handle priority scheduling
 	deployPriorityClass := factory.Client.SchedulingV1().PriorityClasses()
 
 	preemptionPolicy := apiv1.PreemptLowerPriority
@@ -438,4 +526,17 @@ func getPodPriority(labels map[string]string) *int32 {
 	}
 
 	return nil
+}
+
+func getPodTaskType(labels map[string]string) *TaskType {
+	var res *TaskType = nil
+	if value, exists := labels["cs2510.task.type"]; exists {
+		res = new(TaskType)
+		if strings.ToUpper(value) == "IO" {
+			*res = IO_BOUND
+		} else {
+			*res = CPU_BOUND
+		}
+	}
+	return res
 }
