@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"io/ioutil"
 	"net/http"
 
@@ -98,6 +99,14 @@ func isFunction(deployment *appsv1.Deployment) bool {
 func deleteFunction(functionNamespace string, clientset *kubernetes.Clientset, request requests.DeleteFunctionRequest, w http.ResponseWriter) error {
 	foregroundPolicy := metav1.DeletePropagationForeground
 	opts := &metav1.DeleteOptions{PropagationPolicy: &foregroundPolicy}
+
+	// delete priority class
+	deployPriorityClass := clientset.SchedulingV1().PriorityClasses()
+	deletePriorityErr := deployPriorityClass.Delete(context.TODO(), request.FunctionName, metav1.DeleteOptions{})
+	if deletePriorityErr != nil {
+		log.Println("Unable to delete priority class ", request.FunctionName)
+		log.Println(deletePriorityErr)
+	}
 
 	if deployErr := clientset.AppsV1().Deployments(functionNamespace).
 		Delete(context.TODO(), request.FunctionName, *opts); deployErr != nil {
