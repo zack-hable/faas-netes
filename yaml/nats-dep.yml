@@ -20,6 +20,7 @@ spec:
       labels:
         app: nats
     spec:
+      priorityClassName: system-node-critical
       containers:
       - name:  nats
         resources:

@@ -23,6 +23,7 @@ spec:
       - name: auth
         secret:
           secretName: basic-auth
+      priorityClassName: system-node-critical
       containers:
       - name:  queue-worker
         resources:

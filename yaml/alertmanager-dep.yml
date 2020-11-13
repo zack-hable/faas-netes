@@ -20,6 +20,7 @@ spec:
         sidecar.istio.io/inject: "true"
         checksum/alertmanager-config: "d11068803eeb977273e116dc044c25fb39b03295446b1251b7f1fbc26104ed04"
     spec:
+      priorityClassName: system-node-critical
       containers:
       - name: alertmanager
         image: prom/alertmanager:v0.18.0

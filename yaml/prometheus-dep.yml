@@ -21,6 +21,7 @@ spec:
         checksum/prometheus-config: "833784fe79824d5a9adfaf93561abc4dabbf746669235c5ac020e85a9a563510"
     spec:
       serviceAccountName: openfaas-prometheus
+      priorityClassName: system-node-critical
       containers:
       - name: prometheus
         resources:
