@@ -12,3 +12,4 @@ To use the additional features provided by this you need to add them with the --
 - cs2510.priority=<INTEGER> (integer value to represent how high the priority of the function's pods are.  Higher = more priority)
 - cs2510.task.type=<IO|CPU> (IO for io bound tasks and CPU for cpu bound tasks, used for load balancing node assignment)
 - cs2510.balancer=<NONE|LEAST_LOADED> (Which balancing to use for assigning functions to nodes.  NONE uses no node balancing and LEAST_LOADED assigns to least loaded nodes)
+	- Ensure that all of the nodes are tagged in the cluster with a unique ID (node=X).  Ex: ```kubectl label nodes <NODE-NAME> node=X``` where NODE_NAME can be obtained from ```kubectl get nodes```
