@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"math"
+	"errors"
 
 	"github.com/openfaas/faas-netes/pkg/k8s"
 
@@ -229,6 +230,13 @@ func makeDeploymentSpec(request types.FunctionDeployment, existingSecrets map[st
 					scheduleTable[nodeLabel][IO_BOUND] = make([]apiv1.Pod, 0)
 				}
 			}
+		}
+
+		log.Println(len(scheduleTable), " nodes available to schedule to")
+		// if no nodes in schedule table then throw an error (user needs to label at least one node)
+		if len(scheduleTable) == 0 {
+			err = errors.New("No nodes are available to balance to.  Ensure at least one node is labeled with 'node=X' (where X is unique).")
+			return nil, err
 		}
 
 		// get current pods and their assignments
